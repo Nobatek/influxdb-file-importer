@@ -107,6 +107,8 @@ class InfluxDBFileImporter(abc.ABC):
                     )
 
             # Update last modification time in status file
+            # Note that the timestamp is rounded in the process
+            # so the last file may be imported again next time
             status[name]["last_mtime"] = dt.datetime.fromtimestamp(
                 next_mtime_ts).isoformat()
             with open(status_file, "w") as status_f:
