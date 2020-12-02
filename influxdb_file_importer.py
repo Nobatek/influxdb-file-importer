@@ -77,6 +77,9 @@ class InfluxDBFileImporter(abc.ABC):
             for k, v in self._files_cfg["types"].items()
         }
 
+        def get_mtime(file_path):
+            return file_path.stat().st_mtime
+
         for name, config in self._files_cfg["data"].items():
             data_files_dir = data_base_dir / config["subdir"]
             suffixes = self._files_cfg["types"][config["type"]]["suffixes"]
@@ -96,17 +99,17 @@ class InfluxDBFileImporter(abc.ABC):
                 file_paths = (
                     p for p in Path(data_files_dir).iterdir()
                     if (
-                        (p.stat().st_mtime > last_mtime_ts) and
+                        (get_mtime(p) > last_mtime_ts) and
                         (not suffixes or p.suffix in suffixes)
                     )
                 )
-                for csv_file_path in sorted(file_paths):
+                for csv_file_path in sorted(file_paths, key=get_mtime):
                     self.import_file(
                         csv_file_path, name, metadata[config["type"]]
                     )
                     next_mtime_ts = max(
                         next_mtime_ts,
-                        csv_file_path.stat().st_mtime
+                        get_mtime(csv_file_path)
                     )
 
             # Update last modification time in status file
