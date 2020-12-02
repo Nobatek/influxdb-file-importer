@@ -8,7 +8,7 @@ import json
 import influxdb_client
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 class InfluxDBFileImporter(abc.ABC):

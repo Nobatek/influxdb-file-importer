@@ -8,7 +8,7 @@ with open('README.rst', encoding='utf-8') as f:
 
 setup(
     name='influxdb-file-importer',
-    version='0.1.0',
+    version='0.1.1',
     description='Import data from files into InfluxDB',
     long_description=long_description,
     url='https://github.com/Nobatek/influxdb-file-importer',
