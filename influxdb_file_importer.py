@@ -71,6 +71,9 @@ class InfluxDBFileImporter(abc.ABC):
         """Import data from all files"""
         data_base_dir = Path(self._files_cfg["data_base_dir"])
         status_file = self._files_cfg["status_file"]
+        # Local TZ is used to store last mtime in status file
+        # as aware datetime but in a usable TZ
+        local_tz = dt.datetime.utcnow().astimezone().tzinfo
 
         metadata = {
             k: self.load_metadata(v["metadata"], k)
@@ -89,7 +92,7 @@ class InfluxDBFileImporter(abc.ABC):
                 status = json.load(status_f)
             last_mtime = status.setdefault(name, {}).get(
                 "last_mtime",
-                dt.datetime(1970, 1, 1).isoformat()
+                dt.datetime(1970, 1, 1, tzinfo=local_tz).isoformat()
             )
             last_mtime_ts = dt.datetime.fromisoformat(last_mtime).timestamp()
             next_mtime_ts = last_mtime_ts
@@ -116,6 +119,6 @@ class InfluxDBFileImporter(abc.ABC):
             # Note that the timestamp is rounded in the process
             # so the last file may be imported again next time
             status[name]["last_mtime"] = dt.datetime.fromtimestamp(
-                next_mtime_ts).isoformat()
+                next_mtime_ts, tz=local_tz).isoformat()
             with open(status_file, "w") as status_f:
                 json.dump(status, status_f, indent=2)
