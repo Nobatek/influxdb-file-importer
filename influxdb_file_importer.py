@@ -1,5 +1,6 @@
 """Import data from files into InfluxDB"""
 import contextlib
+import contextvars
 import abc
 import datetime as dt
 from pathlib import Path
@@ -9,6 +10,9 @@ import influxdb_client
 
 
 __version__ = "0.2.0"
+
+
+DRY_RUN = contextvars.ContextVar("dry_run", default=False)
 
 
 class InfluxDBFileImporter(abc.ABC):
@@ -26,6 +30,12 @@ class InfluxDBFileImporter(abc.ABC):
         self._import_cfg = import_cfg
         self._client = None
         self._write_api = None
+
+    @contextlib.contextmanager
+    def dry_run(self, dry_run=False):
+        token = DRY_RUN.set(dry_run)
+        yield
+        DRY_RUN.reset(token)
 
     @contextlib.contextmanager
     def connection(self):
@@ -46,10 +56,11 @@ class InfluxDBFileImporter(abc.ABC):
 
     def write(self, record):
         """Write record to InfluxDB database"""
-        self._write_api.write(
-            bucket=self._database_cfg["bucket"],
-            record=record
-        )
+        if not DRY_RUN.get():
+            self._write_api.write(
+                bucket=self._database_cfg["bucket"],
+                record=record
+            )
 
     @abc.abstractmethod
     def import_file(self, csv_file_path, name, metadata):
@@ -67,7 +78,7 @@ class InfluxDBFileImporter(abc.ABC):
         accross files types.
         """
 
-    def import_files(self):
+    def import_files(self, dry_run=False):
         """Import data from all files"""
         data_base_dir = Path(self._files_cfg["data_base_dir"])
         status_file = self._files_cfg["status_file"]
@@ -98,27 +109,29 @@ class InfluxDBFileImporter(abc.ABC):
             next_mtime_ts = last_mtime_ts
 
             # Import files
-            with self.connection():
-                file_paths = (
-                    p for p in Path(data_files_dir).iterdir()
-                    if (
-                        (get_mtime(p) > last_mtime_ts) and
-                        (not suffixes or p.suffix in suffixes)
+            with self.dry_run(dry_run):
+                with self.connection():
+                    file_paths = (
+                        p for p in Path(data_files_dir).iterdir()
+                        if (
+                            (get_mtime(p) > last_mtime_ts) and
+                            (not suffixes or p.suffix in suffixes)
+                        )
                     )
-                )
-                for csv_file_path in sorted(file_paths, key=get_mtime):
-                    self.import_file(
-                        csv_file_path, name, metadata[config["type"]]
-                    )
-                    next_mtime_ts = max(
-                        next_mtime_ts,
-                        get_mtime(csv_file_path)
-                    )
+                    for csv_file_path in sorted(file_paths, key=get_mtime):
+                        self.import_file(
+                            csv_file_path, name, metadata[config["type"]]
+                        )
+                        next_mtime_ts = max(
+                            next_mtime_ts,
+                            get_mtime(csv_file_path)
+                        )
 
-            # Update last modification time in status file
-            # Note that the timestamp is rounded in the process
-            # so the last file may be imported again next time
-            status[name]["last_mtime"] = dt.datetime.fromtimestamp(
-                next_mtime_ts, tz=local_tz).isoformat()
-            with open(status_file, "w") as status_f:
-                json.dump(status, status_f, indent=2)
+                # Update last modification time in status file
+                # Note that the timestamp is rounded in the process
+                # so the last file may be imported again next time
+                status[name]["last_mtime"] = dt.datetime.fromtimestamp(
+                    next_mtime_ts, tz=local_tz).isoformat()
+                if not dry_run:
+                    with open(status_file, "w") as status_f:
+                        json.dump(status, status_f, indent=2)
