@@ -9,7 +9,7 @@ import json
 import influxdb_client
 
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 DRY_RUN = contextvars.ContextVar("dry_run", default=False)
