@@ -28,7 +28,6 @@ class InfluxDBFileImporter(abc.ABC):
         self._database_cfg = database_cfg
         self._files_cfg = files_cfg
         self._import_cfg = import_cfg
-        self._client = None
         self._write_api = None
 
     @contextlib.contextmanager
@@ -40,19 +39,18 @@ class InfluxDBFileImporter(abc.ABC):
     @contextlib.contextmanager
     def connection(self):
         """Open (and close) an InfluxDB client and write_api"""
-        self._client = influxdb_client.InfluxDBClient(
+        client = influxdb_client.InfluxDBClient(
             url=self._database_cfg["url"],
             token=self._database_cfg["token"],
             org=self._database_cfg["org"],
         )
         write_options = influxdb_client.WriteOptions(
             batch_size=self.BATCH_SIZE)
-        self._write_api = self._client.write_api(write_options=write_options)
+        self._write_api = client.write_api(write_options=write_options)
         yield
         self._write_api.__del__()
-        self._client.__del__()
         self._write_api = None
-        self._client = None
+        client.__del__()
 
     def write(self, record):
         """Write record to InfluxDB database"""
