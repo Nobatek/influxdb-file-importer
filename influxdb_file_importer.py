@@ -48,9 +48,8 @@ class InfluxDBFileImporter(abc.ABC):
             batch_size=self.BATCH_SIZE)
         self._write_api = client.write_api(write_options=write_options)
         yield
-        self._write_api.__del__()
-        self._write_api = None
-        client.__del__()
+        self._write_api.close()
+        client.close()
 
     def write(self, record):
         """Write record to InfluxDB database"""
