@@ -117,13 +117,11 @@ class InfluxDBFileImporter(abc.ABC):
                         )
                     )
                     for csv_file_path in sorted(file_paths, key=get_mtime):
+                        mtime = get_mtime(csv_file_path)
                         self.import_file(
                             csv_file_path, name, metadata[config["type"]]
                         )
-                        next_mtime_ts = max(
-                            next_mtime_ts,
-                            get_mtime(csv_file_path)
-                        )
+                        next_mtime_ts = max(next_mtime_ts, mtime)
 
                 # Update last modification time in status file
                 # Note that the timestamp is rounded in the process
