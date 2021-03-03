@@ -9,7 +9,7 @@ import rx
 import influxdb_client
 
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 class InfluxDBFileImporterWriteError(Exception):
