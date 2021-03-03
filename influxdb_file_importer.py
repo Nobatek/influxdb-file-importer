@@ -1,18 +1,19 @@
 """Import data from files into InfluxDB"""
 import contextlib
-import contextvars
 import abc
 import datetime as dt
 from pathlib import Path
 import json
 
+import rx
 import influxdb_client
 
 
 __version__ = "0.3.0"
 
 
-DRY_RUN = contextvars.ContextVar("dry_run", default=False)
+class InfluxDBFileImporterWriteError(Exception):
+    """Error while writing to InfluxDB"""
 
 
 class InfluxDBFileImporter(abc.ABC):
@@ -20,7 +21,7 @@ class InfluxDBFileImporter(abc.ABC):
 
     To make a custom importer, implement abstract methods:
     - load_metadata
-    - import_file
+    - parse_file
     """
     BATCH_SIZE = 5_000
 
@@ -28,42 +29,33 @@ class InfluxDBFileImporter(abc.ABC):
         self._database_cfg = database_cfg
         self._files_cfg = files_cfg
         self._import_cfg = import_cfg
-        self._write_api = None
-
-    @contextlib.contextmanager
-    def dry_run(self, dry_run=False):
-        token = DRY_RUN.set(dry_run)
-        yield
-        DRY_RUN.reset(token)
 
     @contextlib.contextmanager
     def connection(self):
         """Open (and close) an InfluxDB client and write_api"""
+        retries = influxdb_client.client.write.retry.WritesRetry(
+            total=3,
+            backoff_factor=1,
+            exponential_base=2,
+        )
         client = influxdb_client.InfluxDBClient(
             url=self._database_cfg["url"],
             token=self._database_cfg["token"],
             org=self._database_cfg["org"],
+            retries=retries,
         )
-        write_options = influxdb_client.WriteOptions(
-            batch_size=self.BATCH_SIZE)
-        self._write_api = client.write_api(write_options=write_options)
-        yield
-        self._write_api.close()
+        write_api = client.write_api(
+            write_options=influxdb_client.client.write_api.SYNCHRONOUS
+        )
+        yield write_api
+        write_api.close()
         client.close()
 
-    def write(self, record):
-        """Write record to InfluxDB database"""
-        if not DRY_RUN.get():
-            self._write_api.write(
-                bucket=self._database_cfg["bucket"],
-                record=record
-            )
-
     @abc.abstractmethod
-    def import_file(self, csv_file_path, name, metadata):
+    def parse_file(self, csv_file_path, name, metadata):
         """Import data from one file
 
-        Implementation should call `self.write` to write records.
+        Implementation should yield records.
         Config info may be passed in self._import_cfg.
         """
 
@@ -103,30 +95,61 @@ class InfluxDBFileImporter(abc.ABC):
                 dt.datetime(1970, 1, 1, tzinfo=local_tz).isoformat()
             )
             last_mtime_ts = dt.datetime.fromisoformat(last_mtime).timestamp()
-            next_mtime_ts = last_mtime_ts
 
-            # Import files
-            with self.dry_run(dry_run):
-                with self.connection():
-                    file_paths = (
-                        p for p in Path(data_files_dir).iterdir()
-                        if (
-                            (get_mtime(p) > last_mtime_ts) and
-                            (not suffixes or p.suffix in suffixes)
-                        )
-                    )
-                    for csv_file_path in sorted(file_paths, key=get_mtime):
-                        mtime = get_mtime(csv_file_path)
-                        self.import_file(
-                            csv_file_path, name, metadata[config["type"]]
-                        )
-                        next_mtime_ts = max(next_mtime_ts, mtime)
+            # Get new files since last time 
+            file_paths = (
+                p for p in Path(data_files_dir).iterdir()
+                if (
+                    (get_mtime(p) > last_mtime_ts) and
+                    (not suffixes or p.suffix in suffixes)
+                )
+            )
+            sorted_file_paths = sorted(file_paths, key=get_mtime)
+            if not sorted_file_paths:
+                continue
 
-                # Update last modification time in status file
-                # Note that the timestamp is rounded in the process
-                # so the last file may be imported again next time
-                status[name]["last_mtime"] = dt.datetime.fromtimestamp(
-                    next_mtime_ts, tz=local_tz).isoformat()
+            # Build records generator spanning on several files
+            records = (
+                r
+                for f in sorted_file_paths
+                for r in self.parse_file(f, name, metadata[config["type"]])
+            )
+
+            with self.connection() as write_api:
+
+                # Write callback
                 if not dry_run:
-                    with open(status_file, "w") as status_f:
-                        json.dump(status, status_f, indent=2)
+                    def _write(record):
+                        # pylint: disable = cell-var-from-loop
+                        """Write record to InfluxDB database"""
+                        write_api.write(
+                            bucket=self._database_cfg["bucket"],
+                            record=record
+                        )
+                else:
+                    _write = None
+
+                # Exception callback
+                def _on_write_error(exc):
+                    raise InfluxDBFileImporterWriteError from exc
+
+                # Feed records generator to write function
+                # Reraise errors to exit if something went wrong
+                batches = (
+                    rx
+                    .from_iterable(records)
+                    .pipe(rx.operators.buffer_with_count(self.BATCH_SIZE))
+                )
+                batches.subscribe(
+                    on_next=_write,
+                    on_error=_on_write_error,
+                )
+
+            # Update last modification time in status file
+            # Note that the timestamp is rounded in the process
+            # so the last file may be imported again next time
+            status[name]["last_mtime"] = dt.datetime.fromtimestamp(
+                get_mtime(sorted_file_paths[-1]), tz=local_tz).isoformat()
+            if not dry_run:
+                with open(status_file, "w") as status_f:
+                    json.dump(status, status_f, indent=2)

@@ -33,5 +33,6 @@ setup(
     python_requires='>=3.7',
     install_requires=[
         'influxdb_client>=1.12',
+        'rx>=3.1.0',
     ],
 )
