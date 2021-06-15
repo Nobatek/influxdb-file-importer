@@ -96,7 +96,7 @@ class InfluxDBFileImporter(abc.ABC):
             )
             last_mtime_ts = dt.datetime.fromisoformat(last_mtime).timestamp()
 
-            # Get new files since last time 
+            # Get new files since last time
             file_paths = (
                 p for p in Path(data_files_dir).iterdir()
                 if (
@@ -133,7 +133,7 @@ class InfluxDBFileImporter(abc.ABC):
                 def _on_write_error(exc):
                     raise InfluxDBFileImporterWriteError from exc
 
-                # Feed records generator to write function
+                # Feed records generator to write function
                 # Reraise errors to exit if something went wrong
                 batches = (
                     rx
