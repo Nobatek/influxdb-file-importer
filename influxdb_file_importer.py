@@ -81,7 +81,11 @@ class InfluxDBFileImporter(abc.ABC):
         }
 
         def get_mtime(file_path):
-            return file_path.stat().st_mtime
+            """Get file mtime, None if file not found"""
+            try:
+                return file_path.stat().st_mtime
+            except FileNotFoundError:
+                return None
 
         for name, config in self._files_cfg["data"].items():
             data_files_dir = data_base_dir / config["subdir"]
@@ -97,21 +101,28 @@ class InfluxDBFileImporter(abc.ABC):
             last_mtime_ts = dt.datetime.fromisoformat(last_mtime).timestamp()
 
             # Get new files since last time
-            file_paths = (
-                p for p in Path(data_files_dir).iterdir()
+            # Files may disappear during the process (e.g. temp files),
+            # so we remove any file path for which get_mtime returns None
+            file_mtimes_paths = (
+                (p, get_mtime(p)) for p in Path(data_files_dir).iterdir()
+            )
+            file_mtimes_paths = (
+                (p, t) for (p, t) in file_mtimes_paths
                 if (
-                    (get_mtime(p) > last_mtime_ts) and
+                    (t is not None and t > last_mtime_ts) and
                     (not suffixes or p.suffix in suffixes)
                 )
             )
-            sorted_file_paths = sorted(file_paths, key=get_mtime)
-            if not sorted_file_paths:
+            if not file_mtimes_paths:
                 continue
+            sorted_file_mtimes_paths = sorted(
+                file_mtimes_paths, key=lambda tp: tp[1]
+            )
 
             # Build records generator spanning on several files
             records = (
                 r
-                for f in sorted_file_paths
+                for f, _ in sorted_file_mtimes_paths
                 for r in self.parse_file(f, name, metadata[config["type"]])
             )
 
@@ -149,7 +160,7 @@ class InfluxDBFileImporter(abc.ABC):
             # Note that the timestamp is rounded in the process
             # so the last file may be imported again next time
             status[name]["last_mtime"] = dt.datetime.fromtimestamp(
-                get_mtime(sorted_file_paths[-1]), tz=local_tz).isoformat()
+                sorted_file_mtimes_paths[-1][1], tz=local_tz).isoformat()
             if not dry_run:
                 with open(status_file, "w") as status_f:
                     json.dump(status, status_f, indent=2)
