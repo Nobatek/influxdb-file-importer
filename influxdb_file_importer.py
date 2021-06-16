@@ -110,11 +110,13 @@ class InfluxDBFileImporter(abc.ABC):
                     (not suffixes or p.suffix in suffixes)
                 )
             )
-            if not file_mtimes_paths:
-                continue
             sorted_file_mtimes_paths = sorted(
                 file_mtimes_paths, key=lambda tp: tp[1]
             )
+            # Check not empty. Doing this on sorted list because
+            # file_mtimes_paths is a generator. bool(generator) is always True.
+            if not sorted_file_mtimes_paths:
+                continue
 
             # Build records generator spanning on several files
             records = (
