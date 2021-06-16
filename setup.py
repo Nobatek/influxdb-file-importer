@@ -32,7 +32,7 @@ setup(
     py_modules=['influxdb_file_importer'],
     python_requires='>=3.7',
     install_requires=[
-        'influxdb_client>=1.12',
+        'influxdb_client>=1.13',
         'rx>=3.1.0',
     ],
 )
