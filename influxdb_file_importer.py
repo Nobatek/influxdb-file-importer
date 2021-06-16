@@ -32,24 +32,21 @@ class InfluxDBFileImporter(abc.ABC):
 
     @contextlib.contextmanager
     def connection(self):
-        """Open (and close) an InfluxDB client and write_api"""
+        """Provide InfluxDB client write_api"""
         retries = influxdb_client.client.write.retry.WritesRetry(
             total=3,
             backoff_factor=1,
             exponential_base=2,
         )
-        client = influxdb_client.InfluxDBClient(
+        with influxdb_client.InfluxDBClient(
             url=self._database_cfg["url"],
             token=self._database_cfg["token"],
             org=self._database_cfg["org"],
             retries=retries,
-        )
-        write_api = client.write_api(
+        ) as client, client.write_api(
             write_options=influxdb_client.client.write_api.SYNCHRONOUS
-        )
-        yield write_api
-        write_api.close()
-        client.close()
+        ) as write_api:
+            yield write_api
 
     @abc.abstractmethod
     def parse_file(self, csv_file_path, name, metadata):
