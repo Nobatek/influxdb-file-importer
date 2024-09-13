@@ -5,7 +5,7 @@ import datetime as dt
 from pathlib import Path
 import json
 
-import rx
+import reactivex
 import influxdb_client
 
 
@@ -146,9 +146,9 @@ class InfluxDBFileImporter(abc.ABC):
                 # Feed records generator to write function
                 # Reraise errors to exit if something went wrong
                 batches = (
-                    rx
+                    reactivex
                     .from_iterable(records)
-                    .pipe(rx.operators.buffer_with_count(self.BATCH_SIZE))
+                    .pipe(reactivex.operators.buffer_with_count(self.BATCH_SIZE))
                 )
                 batches.subscribe(
                     on_next=_write,
