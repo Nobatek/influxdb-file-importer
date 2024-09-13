@@ -1,13 +1,13 @@
 """Import data from files into InfluxDB"""
-import contextlib
+
 import abc
+import contextlib
 import datetime as dt
-from pathlib import Path
 import json
+from pathlib import Path
 
-import reactivex
 import influxdb_client
-
+import reactivex
 
 __version__ = "0.5.1"
 
@@ -23,6 +23,7 @@ class InfluxDBFileImporter(abc.ABC):
     - load_metadata
     - parse_file
     """
+
     BATCH_SIZE = 5_000
 
     def __init__(self, database_cfg, files_cfg, import_cfg):
@@ -38,14 +39,17 @@ class InfluxDBFileImporter(abc.ABC):
             backoff_factor=1,
             exponential_base=2,
         )
-        with influxdb_client.InfluxDBClient(
-            url=self._database_cfg["url"],
-            token=self._database_cfg["token"],
-            org=self._database_cfg["org"],
-            retries=retries,
-        ) as client, client.write_api(
-            write_options=influxdb_client.client.write_api.SYNCHRONOUS
-        ) as write_api:
+        with (
+            influxdb_client.InfluxDBClient(
+                url=self._database_cfg["url"],
+                token=self._database_cfg["token"],
+                org=self._database_cfg["org"],
+                retries=retries,
+            ) as client,
+            client.write_api(
+                write_options=influxdb_client.client.write_api.SYNCHRONOUS
+            ) as write_api,
+        ):
             yield write_api
 
     @abc.abstractmethod
@@ -92,8 +96,7 @@ class InfluxDBFileImporter(abc.ABC):
             with open(status_file) as status_f:
                 status = json.load(status_f)
             last_mtime = status.setdefault(name, {}).get(
-                "last_mtime",
-                dt.datetime(1970, 1, 1, tzinfo=local_tz).isoformat()
+                "last_mtime", dt.datetime(1970, 1, 1, tzinfo=local_tz).isoformat()
             )
             last_mtime_ts = dt.datetime.fromisoformat(last_mtime).timestamp()
 
@@ -104,15 +107,14 @@ class InfluxDBFileImporter(abc.ABC):
                 (p, get_mtime(p)) for p in Path(data_files_dir).iterdir()
             )
             file_mtimes_paths = (
-                (p, t) for (p, t) in file_mtimes_paths
+                (p, t)
+                for (p, t) in file_mtimes_paths
                 if (
-                    (t is not None and t > last_mtime_ts) and
-                    (not suffixes or p.suffix in suffixes)
+                    (t is not None and t > last_mtime_ts)
+                    and (not suffixes or p.suffix in suffixes)
                 )
             )
-            sorted_file_mtimes_paths = sorted(
-                file_mtimes_paths, key=lambda tp: tp[1]
-            )
+            sorted_file_mtimes_paths = sorted(file_mtimes_paths, key=lambda tp: tp[1])
             # Check not empty. Doing this on sorted list because
             # file_mtimes_paths is a generator. bool(generator) is always True.
             if not sorted_file_mtimes_paths:
@@ -126,15 +128,14 @@ class InfluxDBFileImporter(abc.ABC):
             )
 
             with self.connection() as write_api:
-
                 # Write callback
                 if not dry_run:
+
                     def _write(record):
                         # pylint: disable = cell-var-from-loop
                         """Write record to InfluxDB database"""
                         write_api.write(
-                            bucket=self._database_cfg["bucket"],
-                            record=record
+                            bucket=self._database_cfg["bucket"], record=record
                         )
                 else:
                     _write = None
@@ -145,10 +146,8 @@ class InfluxDBFileImporter(abc.ABC):
 
                 # Feed records generator to write function
                 # Reraise errors to exit if something went wrong
-                batches = (
-                    reactivex
-                    .from_iterable(records)
-                    .pipe(reactivex.operators.buffer_with_count(self.BATCH_SIZE))
+                batches = reactivex.from_iterable(records).pipe(
+                    reactivex.operators.buffer_with_count(self.BATCH_SIZE)
                 )
                 batches.subscribe(
                     on_next=_write,
@@ -159,7 +158,8 @@ class InfluxDBFileImporter(abc.ABC):
             # Note that the timestamp is rounded in the process
             # so the last file may be imported again next time
             status[name]["last_mtime"] = dt.datetime.fromtimestamp(
-                sorted_file_mtimes_paths[-1][1], tz=local_tz).isoformat()
+                sorted_file_mtimes_paths[-1][1], tz=local_tz
+            ).isoformat()
             if not dry_run:
                 with open(status_file, "w") as status_f:
                     json.dump(status, status_f, indent=2)
