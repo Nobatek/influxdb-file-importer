@@ -1,0 +1,57 @@
+[project]
+name = "influxdb-file-importer"
+version = "0.5.1"
+description = "Import data from files into InfluxDB"
+readme = "README.rst"
+authors = [
+  { name = "Jérôme Lafréchoux", email = "jlafrechoux@nobatek.inef4.com" },
+]
+maintainers = [
+  { name = "Jérôme Lafréchoux", email = "jlafrechoux@nobatek.inef4.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.9"
+dependencies = [
+  "influxdb_client>=1.46",
+  "reactivex>=4.0",
+]
+
+
+[project.optional-dependencies]
+dev = [
+  "pre-commit~=3.6",
+]
+
+[build-system]
+requires = ["flit_core<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.ruff]
+src = ["src"]
+fix = true
+show-fixes = true
+output-format = "full"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+ignore = ["E203", "E266", "E501", "E731"]
+select = [
+  "B",  # flake8-bugbear
+  "E",  # pycodestyle error
+  "F",  # pyflakes
+  "I",  # isort
+  "UP", # pyupgrade
+  "W",  # pycodestyle warning
+]
+
+[tool.ruff.lint.pyupgrade]
+keep-runtime-typing = true
