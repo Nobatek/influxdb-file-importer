@@ -52,6 +52,3 @@ select = [
   "UP", # pyupgrade
   "W",  # pycodestyle warning
 ]
-
-[tool.ruff.lint.pyupgrade]
-keep-runtime-typing = true
