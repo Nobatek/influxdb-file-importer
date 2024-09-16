@@ -81,6 +81,11 @@ class InfluxDBFileImporter(abc.ABC):
             for k, v in self._files_cfg["types"].items()
         }
 
+        # Create status file if needed
+        if not Path(status_file).is_file():
+            with open(status_file, "w") as status_f:
+                json.dump({}, status_f, indent=2)
+
         def get_mtime(file_path):
             """Get file mtime, None if file not found"""
             try:
