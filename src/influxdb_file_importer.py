@@ -104,7 +104,7 @@ class InfluxDBFileImporter(abc.ABC):
             # Files may disappear during the process (e.g. temp files),
             # so we remove any file path for which get_mtime returns None
             file_mtimes_paths = (
-                (p, get_mtime(p)) for p in Path(data_files_dir).iterdir()
+                (p, get_mtime(p)) for p in Path(data_files_dir).iterdir() if p.is_file()
             )
             file_mtimes_paths = (
                 (p, t)
