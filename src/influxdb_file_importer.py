@@ -4,12 +4,11 @@ import abc
 import contextlib
 import datetime as dt
 import json
+import re
 from pathlib import Path
 
 import influxdb_client
 import reactivex
-
-__version__ = "0.5.1"
 
 
 class InfluxDBFileImporterWriteError(Exception):
@@ -61,11 +60,10 @@ class InfluxDBFileImporter(abc.ABC):
         """
 
     @abc.abstractmethod
-    def load_metadata(self, path, file_type):
+    def load_metadata(self, path, name):
         """Import metadata from description file
 
-        file_type is provided as a hint as metadata description may differ
-        accross files types.
+        name is provided as a hint as metadata description may differ accross sources
         """
 
     def import_files(self, dry_run=False):
@@ -75,11 +73,6 @@ class InfluxDBFileImporter(abc.ABC):
         # Local TZ is used to store last mtime in status file
         # as aware datetime but in a usable TZ
         local_tz = dt.datetime.utcnow().astimezone().tzinfo
-
-        metadata = {
-            k: self.load_metadata(v["metadata"], k)
-            for k, v in self._files_cfg["types"].items()
-        }
 
         # Create status file if needed
         if not Path(status_file).is_file():
@@ -95,7 +88,8 @@ class InfluxDBFileImporter(abc.ABC):
 
         for name, config in self._files_cfg["data"].items():
             data_files_dir = data_base_dir / config["subdir"]
-            suffixes = self._files_cfg["types"][config["type"]]["suffixes"]
+            pattern = config["pattern"]
+            metadata = self.load_metadata(config["metadata"], name)
 
             # Get last modification time from status file
             with open(status_file) as status_f:
@@ -116,7 +110,7 @@ class InfluxDBFileImporter(abc.ABC):
                 for (p, t) in file_mtimes_paths
                 if (
                     (t is not None and t > last_mtime_ts)
-                    and (not suffixes or p.suffix in suffixes)
+                    and (not pattern or re.fullmatch(pattern, p.name))
                 )
             )
             sorted_file_mtimes_paths = sorted(file_mtimes_paths, key=lambda tp: tp[1])
@@ -129,7 +123,7 @@ class InfluxDBFileImporter(abc.ABC):
             records = (
                 r
                 for f, _ in sorted_file_mtimes_paths
-                for r in self.parse_file(f, name, metadata[config["type"]])
+                for r in self.parse_file(f, name, metadata)
             )
 
             with self.connection() as write_api:
